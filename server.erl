@@ -7,7 +7,7 @@
 
 -include_lib("stdlib/include/qlc.hrl").
 
--export([start_link/0, accept_clients/0, get_record/1, show_clients/0, make_admin/0, remove_admin/0, mute_user/0, unmute_user/0, print_messages/1]).
+-export([start_link/0, accept_clients/0, show_admins/0, toggle_config/0, get_record/1, show_clients/0, make_admin/0, remove_admin/0, mute_user/0, unmute_user/0, print_messages/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
@@ -21,7 +21,7 @@ init([]) ->
     {N,[]} =  string:to_integer(string:trim(io:get_line("Enter No of Clients Allowed : "))),
     {X,[]} =  string:to_integer(string:trim(io:get_line("Message History Size : "))),
     ChatTopic = string:trim(io:get_line("Enter Chat Topic : ")),
-    {ok, ListenSocket} = gen_tcp:listen(9991, [binary, {active, true}]),
+    {ok, ListenSocket} = gen_tcp:listen(9990, [binary, {active, true}]),
     database_init(),
     ServerStatus = #server_status{listenSocket = ListenSocket, counter = 1, maxClients = N, historySize = X, chatTopic = ChatTopic, config = restricted},
     mnesia:transaction(fun() -> mnesia:write(ServerStatus) end),
@@ -80,7 +80,6 @@ handle_call(Request,From, ServerStatus) ->
             case RecSocket of
                 {error, _} ->
                     Response = {error, "User Not Found"};
-                    % {reply, {error, "User not found"}, ServerStatus};
                 _RecSocket ->
                     RecvState = get_state(RecSocket),
                     if
@@ -88,14 +87,12 @@ handle_call(Request,From, ServerStatus) ->
                             io:format("Client ~p send message to ~p : ~p~n", [getUserName(ClientSocket), Receiver, Message]),
                             broadcast(ClientSocket, Message, Receiver),
                             Response = {success, "Message Sent"};
-                            % {reply, {success, "Message Sent"}, ServerStatus};
                         true ->
                             SenderName = getUserName(ClientSocket),
                             Msg = "Receiver is Oflline, he will be notified later.",
                             insert_message_database(SenderName, Message, Receiver),
                             io:format("~s~n",[Msg]),
                             Response = {warning, Msg}
-                            % {reply, {warning, Msg}, ServerStatus}
                     end
             end,
             {reply, Response, ServerStatus};
@@ -180,13 +177,20 @@ handle_call(Request,From, ServerStatus) ->
                 {error, _} ->
                     Response = {error, "User " ++ MuteClientName ++" does not exist"};
                 _ ->
-                    io:format("mute case 2~n"),
                     Response = {success},
-                    io:format("Client ~p is now muted.~n",[MuteClientName]),
-                    MutingMessage = MuteClientName ++ " was muted.",
-                    broadcast(ClientSocket, MutingMessage),
-                    io:format("93~n"),
-                    mute_user(MuteClientName, MuteDuration)
+                    % add case for unmute
+                    if
+                        MuteDuration == 0 ->
+                            io:format("Client ~p is now unmuted.~n",[MuteClientName]),
+                            UnMutingMessage = MuteClientName ++ " is unmuted.",
+                            broadcast(ClientSocket, UnMutingMessage),
+                            unmute_user(MuteClientName);
+                        true ->
+                            io:format("Client ~p is now muted.~n",[MuteClientName]),
+                            MutingMessage = MuteClientName ++ " was muted.",
+                            broadcast(ClientSocket, MutingMessage),
+                            mute_user(MuteClientName, MuteDuration)
+                    end 
             end,
             {reply, Response, ServerStatus};
         _ -> 
@@ -214,7 +218,6 @@ get_client_info_add(ClientAddress) ->
         qlc:e(qlc:q([M || M <- mnesia:table(client)]))
     end,
     {atomic, ClientList} = mnesia:transaction(F),
-    % clientSocket, clientName, clientAddress, adminStatus = false, state = online, timestamp = os:timestamp(
     X = lists:filter(fun({client, _Socket, _Name, Address, _AdminStatus, _State, _TimeStamp}) ->
         Address == ClientAddress end, ClientList),
     [ClientStatus | _] = X,
@@ -224,7 +227,6 @@ get_client_info_add(ClientAddress) ->
 get_record(ClientName) ->
     F = fun() -> qlc:e(qlc:q([M || M <- mnesia:table(client)])) end,
     {atomic, Query} = mnesia:transaction(F),
-    % io:format("Query : ~p~n",[Query]),
     [Row | _] =  lists:filter(fun({client, _Socket, Name, _Address, _AdminStatus, _State, _TimeStamp}) ->
             Name == ClientName
         end, Query),
@@ -241,14 +243,12 @@ broadcast(SenderSocket, Message, Receiver) ->
         RecSocket ->
             io:format("RecScoket : ~p, Sendername : ~p~n",[RecSocket, SenderName]),
             gen_tcp:send(RecSocket, term_to_binary({message, SenderName, Message}))
-            % gen_tcp:send(SenderSocket, term_to_binary({success, "Message Succesfully Sent"}))
     end.
 
 broadcast(SenderSocket, Message) ->
     SenderName = getUserName(SenderSocket),
     insert_message_database(SenderName, Message, "All"),
     Keys = mnesia:dirty_all_keys(client),
-    io:format("Keys : ~p~n",[Keys]),
     lists:foreach(fun(ClientSocket) ->
         State = get_state(ClientSocket),
         case State of
@@ -365,7 +365,7 @@ retreive_messages(N) ->
     {atomic, Query} = mnesia:transaction(F),
     ReverseMessages = lists:sublist(lists:reverse(Query), 1, N),
     Messages = lists:reverse(ReverseMessages),
-    Filtered = lists:filter(fun({message,_,_,_, Receiver}) ->  %{timestamp, senderName, text, receiver}
+    Filtered = lists:filter(fun({message,_,_,_, Receiver}) -> 
                             Receiver == "All"
                     end,  Messages),
     MessageHistory = lists:map(fun({message,_,SenderName,Text, _}) ->
@@ -407,6 +407,17 @@ remove_admin() ->
             gen_tcp:send(ClientSocket, term_to_binary({admin, false}))
     end.
 
+show_admins() ->
+    ClientList = retreive_clients(),
+    FilteredClientList = lists:filter(fun({client, _ClientSocket, _ClientName, _ClientAddress, AdminStatus, _State, _TimeStamp}) ->
+        AdminStatus == true end, ClientList),
+    FormattedAdminClientList = lists:map(fun({client, _ClientSocket, ClientName, _ClientAddress, _AdminStatus, _State, _TimeStamp}) ->
+        ClientName
+        end, FilteredClientList),
+    io:format("Admin Clients:~n"),
+    lists:foreach(fun(X) ->
+        io:format("~p~n", [X]) end, FormattedAdminClientList).
+
 getUserName(ClientSocket) ->
     Trans = fun() -> mnesia:read({client, ClientSocket}) end, 
     Result = mnesia:transaction(Trans),
@@ -443,6 +454,9 @@ mute_user(ClientName, MuteDuration) ->
 
 unmute_user() ->
     ClientName = string:trim(io:get_line("Enter Client Name: ")),
+    unmute_user(ClientName).
+
+unmute_user(ClientName) ->
     ClientSocket = getSocket(ClientName),
     case ClientSocket of
         {error, _Message} ->
@@ -450,6 +464,21 @@ unmute_user() ->
         ClientSocket ->
             gen_tcp:send(ClientSocket, term_to_binary({mute, false, 0}))
     end.
+
+toggle_config() ->
+    [ ListenSocket | _ ] = mnesia:dirty_all_keys(server_status),
+    Trans = fun() -> mnesia:read({server_status, ListenSocket}) end,
+    {atomic, [Row]} = mnesia:transaction(Trans),
+    case Row#server_status.config of
+        restricted ->
+            io:format("switching to open Mode ~n"),
+            UpdatedRecord = Row#server_status{config = open};
+        open ->
+            io:format("switching to restricted Mode ~n"),
+            UpdatedRecord = Row#server_status{config = restricted}
+    end,
+    mnesia:transaction(fun() -> mnesia:write(UpdatedRecord) end),
+    ok.
 
 remove_client(ClientSocket) ->
     mnesia:transaction(fun() ->
