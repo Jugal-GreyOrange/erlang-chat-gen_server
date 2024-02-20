@@ -75,11 +75,6 @@ handle_call(Request,From, ServerStatus) ->
     {ClientAddress, _} = From,
     {client, ClientSocket, ClientName, _ClientAddress,_AdminStatus, _State , _TimeStamp} = get_client_info_add(ClientAddress),
     case Request of
-        % {username, ClientName} ->
-        %     Record = get_record(ClientName),
-        %     mnesia:transaction(fun() -> mnesia:write(Record#client{clientAddress = ClientAddress}) end),
-        %     {reply, ok, ServerStatus};
-            % Private Message
         {private_message, Message, Receiver} ->
             RecSocket = getSocket(Receiver),
             case RecSocket of
@@ -112,7 +107,7 @@ handle_call(Request,From, ServerStatus) ->
         % Send list of Active Clients 
         {show_clients} ->
             List = retreive_clients(),
-            {reply, {List}, ServerStatus};
+            {reply, List, ServerStatus};
         % Client going offline
         {offline} ->
             Message = getUserName(ClientSocket) ++ " is offline now.",
@@ -141,13 +136,13 @@ handle_call(Request,From, ServerStatus) ->
             if
                 AdminStatus == true orelse Config == open ->
                     update_chat_topic(NewTopic, ListenSocket),
-                    {reply,{success}, ServerStatus},
+                    Response = {success},
                     Message = "Chat Topic Updated to " ++ NewTopic,
                     broadcast(ClientSocket, Message);
                 true ->
-                    {reply, {failed}, ServerStatus}
+                    Response = {failed}
             end,
-            {reply, ok, ServerStatus};
+            {reply, Response, ServerStatus};
         % Exit from ChatRoom
         {exit} ->
             ClientName = getUserName(ClientSocket),
@@ -252,8 +247,6 @@ broadcast(SenderSocket, Message, Receiver) ->
 broadcast(SenderSocket, Message) ->
     SenderName = getUserName(SenderSocket),
     insert_message_database(SenderName, Message, "All"),
-%   {client, SenderSocket, SenderName, _, _} = get_client_info_add(SenderAddress),
-%     use SenderAddress to get all arguments
     Keys = mnesia:dirty_all_keys(client),
     io:format("Keys : ~p~n",[Keys]),
     lists:foreach(fun(ClientSocket) ->
@@ -351,7 +344,6 @@ active_clients() ->
     {atomic,List} = mnesia:transaction(Trans),
     No_of_clients = length(List),
     No_of_clients.
-
 
 retreive_clients() ->
     F = fun() ->
