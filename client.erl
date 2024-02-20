@@ -13,7 +13,7 @@ start() ->
 
 start_helper(ClientStatus) ->
     io:format("Connecting to server...~n"),
-    {ok, Socket} = gen_tcp:connect('localhost', 9991, [binary, {active, true}]),
+    {ok, Socket} = gen_tcp:connect('localhost', 9990, [binary, {active, true}]),
     gen_tcp:recv(Socket, 0),
     receive
         {tcp, Socket, BinaryData} ->
@@ -49,7 +49,6 @@ listen_loop(ClientStatus) ->
     receive
         {tcp, Socket, BinaryData} ->
             Data = binary_to_term(BinaryData),
-            % io:format("Data : ~p~n",[Data]),
             case Data of
                 {message, SenderName, Message} ->
                     io:format("~p : ~p~n", [SenderName, Message]);
@@ -124,7 +123,6 @@ listen_loop(ClientStatus) ->
                     Response = gen_server:call({server, ServerNode}, Request),
                     io:format("You are Online Now :) ~n"),
                     ClientStatus1 = ClientStatus#client_status{state = online},
-                    io:format("Response = ~p~n", [Response]),
                     case Response of
                         {previous, List} ->
                             Len = list_size(List),
