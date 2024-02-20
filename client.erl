@@ -117,11 +117,14 @@ listen_loop(ClientStatus) ->
                     Request = {offline},
                     gen_server:call({server, ServerNode}, Request),
                     io:format("You are Offline Now :') ~n"),
-                    listen_loop(ClientStatus);
+                    ClientStatus1 = ClientStatus#client_status{state = offline},
+                    listen_loop(ClientStatus1);
                 {online} when State =:= offline ->
                     Request = {online},
                     Response = gen_server:call({server, ServerNode}, Request),
                     io:format("You are Online Now :) ~n"),
+                    ClientStatus1 = ClientStatus#client_status{state = online},
+                    io:format("Response = ~p~n", [Response]),
                     case Response of
                         {previous, List} ->
                             Len = list_size(List),
@@ -135,7 +138,7 @@ listen_loop(ClientStatus) ->
                         _ ->
                             ok
                     end,
-                    listen_loop(ClientStatus);
+                    listen_loop(ClientStatus1);
                 {topic} when State =:= online ->
                     Request = {topic},
                     Response = gen_server:call({server, ServerNode}, Request),
@@ -159,17 +162,17 @@ listen_loop(ClientStatus) ->
                 {show_clients} when State =:= online ->
                     Request = {show_clients},
                     ClientList = _Response = gen_server:call({server, ServerNode}, Request),
-                    FormattedClientList = lists:map(fun({client, _, Name, _, _}) -> %clientSocket, clientName, adminStatus = false, state = online, timestamp}
-                        Name
+                    FormattedClientList = lists:map(fun({client, _ClientSocket, ClientName, _ClientAddress, _AdminStatus, _State, _Timestamp}) ->
+                        ClientName
                         end, ClientList),
                     print_list(FormattedClientList);
                 {show_admins} when State =:= online ->
                     Request = {show_clients},
                     ClientList = _Response = gen_server:call({server, ServerNode}, Request),
-                    FilteredClientList = lists:filter(fun({client, _, _, _, Status}) ->
-                        Status == true end, ClientList),
-                    FormattedAdminClientList = lists:map(fun({client, _, Name, _, _}) ->
-                        Name
+                    FilteredClientList = lists:filter(fun({client, _ClientSocket, _ClientName, _ClientAddress, AdminStatus, _State, _Timestamp}) ->
+                        AdminStatus == true end, ClientList),
+                    FormattedAdminClientList = lists:map(fun({client, _ClientSocket, ClientName, _ClientAddress, _AdminStatus, _State, _Timestamp}) ->
+                        ClientName
                         end, FilteredClientList),
                     print_list(FormattedAdminClientList);
                 _ ->
