@@ -1,7 +1,7 @@
 -module(client).
  
--export([start/0, listen_loop/1, send_message/0, kick_user/0, mute_user/0, unmute_user/0, show_admins/0, make_admin/0, show_clients/0, send_private_message/0]).
--record(client_status, {name, serverSocket, startPid, serverNode, adminStatus = false, muteTime = os:timestamp(), muteDuration = 0, state = online, spawnedPid}).
+-export([start/0, listen_loop/1, offline/0, online/0, get_chat_topic/0, change_topic/0, exit/0, send_message/0, kick_user/0, mute_user/0, unmute_user/0, show_admins/0, make_admin/0, show_clients/0, send_private_message/0]).
+-record(client_status, {name, serverSocket, startPid, serverNode, adminStatus = false, muteTime = os:timestamp(), muteDuration = 0, state = online}).
 % -define(SERVER, server).
 
 start() ->
@@ -49,6 +49,7 @@ listen_loop(ClientStatus) ->
     receive
         {tcp, Socket, BinaryData} ->
             Data = binary_to_term(BinaryData),
+            % io:format("Data : ~p~n",[Data]),
             case Data of
                 {message, SenderName, Message} ->
                     io:format("~p : ~p~n", [SenderName, Message]);
@@ -91,10 +92,10 @@ listen_loop(ClientStatus) ->
                     case Response of
                         {success, _Message} ->
                             ok;
-                        {warning, Message} ->
-                            io:format("~s~n",[Message]);
-                        {error, Message} ->
-                            io:format("Error : ~s~n",[Message])
+                        {warning, Msg} ->
+                            io:format("~s~n",[Msg]);
+                        {error, Msg} ->
+                            io:format("Error : ~s~n",[Msg])
                     end;
                     % private_message_helper(ClientStatus);
                 {message, Message} when State =:= online ->
@@ -234,6 +235,14 @@ send_message() ->
     SpawnedPid ! {StartPid, {message, Message}},
     ok.
 
+send_private_message() ->
+    Message = string:trim(io:get_line("Enter message: ")),
+    Receiver = string:trim(io:get_line("Enter receiver name: ")),
+    StartPid = get(startPid),
+    SpawnedPid = get(spawnedPid),
+    SpawnedPid ! {StartPid, {private_message, Message, Receiver}},
+    ok.
+
 print_list(List) ->
     lists:foreach(fun(X) ->
         io:format("~p~n", [X]) end, List).
@@ -259,6 +268,8 @@ mute_check(ClientStatus) ->
         false ->
             {false, 0}      % mute time ended
     end.
+
+
 
 kick_user() ->
     ClientName = string:trim(io:get_line("Enter Client Name: ")),
@@ -300,6 +311,38 @@ show_clients() ->
     SpawnedPid = get(spawnedPid),
     SpawnedPid ! {StartPid, {show_clients}},
     ok.
+
+offline() ->
+    StartPid = get(startPid),
+    SpawnedPid = get(spawnedPid),
+    SpawnedPid ! {StartPid, {offline}},
+    ok.
+
+online() ->
+    StartPid = get(startPid),
+    SpawnedPid = get(spawnedPid),
+    SpawnedPid ! {StartPid, {online}},
+    ok.
+
+exit() ->
+    StartPid = get(startPid),
+    SpawnedPid = get(spawnedPid),
+    SpawnedPid ! {StartPid, {exit}},
+    ok.
+
+change_topic() ->
+    Topic = string:trim(io:get_line("Enter New Topic : ")),
+    StartPid = get(startPid),
+    SpawnedPid = get(spawnedPid),
+    SpawnedPid ! {StartPid, {change_topic, Topic}},
+    ok.
+
+get_chat_topic() ->
+    StartPid = get(startPid),
+    SpawnedPid = get(spawnedPid),
+    SpawnedPid ! {StartPid, {topic}},
+    ok.
+
 
 
 %-------------helper functions-----------------
