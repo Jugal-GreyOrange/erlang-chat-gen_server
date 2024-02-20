@@ -32,7 +32,7 @@ start_helper(ClientStatus) ->
                     end,
                     ClientStatus1 = ClientStatus#client_status{name = ClientName, serverSocket = Socket, serverNode = ServerNode},
                     gen_server:call({server, ServerNode}, {username, ClientName}),
-                    listen_loop(ClientStatus1, online);
+                    listen_loop(ClientStatus1);
                 {reject, Message} ->
                     io:format("~p~n", [Message])
                 end;
@@ -104,7 +104,7 @@ listen_loop(ClientStatus) ->
                             io:format("Muted for ~p more minutes. ~n", [Duration]);
                         false ->
                             Request = {message, Message},
-                            gen_server:call({server, ServerNode}, Request)
+                            gen_server:call({server, ServerNode}, Request),
                             ok
                     end;
                 {exit} when State =:= online ->
@@ -112,28 +112,11 @@ listen_loop(ClientStatus) ->
                     gen_server:call({server, ServerNode}, Request);
                 {make_admin, ClientName} when State =:= online ->
                     make_admin_helper(ClientStatus, ClientName);
-                {show_clients} when State =:= online ->
-                    Request = {show_clients},
-                    gen_server:call({server, ServerNode}, Request),
-                    ClientList = get_client_list(ClientStatus),
-                    FormattedClientList = lists:map(fun({client, _, Name, _, _, _}) -> %clientSocket, clientName, adminStatus = false, state = online, timestamp}
-                        Name
-                        end, ClientList),
-                    print_list(FormattedClientList);
-                {show_admins} when State =:= online ->
-                    BinaryData = term_to_binary({show_clients}),
-                    {ClientList} = gen_tcp:send(Socket, BinaryData),
-                    FilteredClientList = lists:filter(fun({client, _, _, _, Status, _, _}) ->
-                        Status == true end, ClientList),
-                    FormattedAdminClientList = lists:map(fun({client, _, Name, _, _, _, _}) ->
-                        Name
-                        end, FilteredClientList),
-                    print_list(FormattedAdminClientList);
                 {offline} when State =:= online ->
                     Request = {offline},
                     gen_server:call({server, ServerNode}, Request),
                     io:format("You are Offline Now :') ~n"),
-                    listen_loop(ClientStatus, offline);
+                    listen_loop(ClientStatus);
                 {online} when State =:= offline ->
                     Request = {online},
                     Response = gen_server:call({server, ServerNode}, Request),
@@ -151,7 +134,7 @@ listen_loop(ClientStatus) ->
                         _ ->
                             ok
                     end,
-                    listen_loop(ClientStatus, online);
+                    listen_loop(ClientStatus);
                 {topic} when State =:= online ->
                     Request = {topic},
                     Response = gen_server:call({server, ServerNode}, Request),
@@ -172,22 +155,22 @@ listen_loop(ClientStatus) ->
                     kick_helper(ClientStatus, ClientName);
                 {mute_user, ClientName, MuteDuration} ->
                     mute_helper(ClientStatus, ClientName, MuteDuration);
-%                 {show_clients} when State =:= online ->
-%                     Request = {show_clients},
-%                     ClientList = _Response = gen_server:call({server, ServerNode}, Request),
-%                     FormattedClientList = lists:map(fun({client, _, Name, _, _}) -> %clientSocket, clientName, adminStatus = false, state = online, timestamp}
-%                         Name
-%                         end, ClientList),
-%                     print_list(FormattedClientList);
-%                 {show_admins} when State =:= online ->
-%                     Request = {show_clients},
-%                     ClientList = _Response = gen_server:call({server, ServerNode}, Request),
-%                     FilteredClientList = lists:filter(fun({client, _, _, _, Status}) ->
-%                         Status == true end, ClientList),
-%                     FormattedAdminClientList = lists:map(fun({client, _, Name, _, _}) ->
-%                         Name
-%                         end, FilteredClientList),
-%                     print_list(FormattedAdminClientList);
+                {show_clients} when State =:= online ->
+                    Request = {show_clients},
+                    ClientList = _Response = gen_server:call({server, ServerNode}, Request),
+                    FormattedClientList = lists:map(fun({client, _, Name, _, _}) -> %clientSocket, clientName, adminStatus = false, state = online, timestamp}
+                        Name
+                        end, ClientList),
+                    print_list(FormattedClientList);
+                {show_admins} when State =:= online ->
+                    Request = {show_clients},
+                    ClientList = _Response = gen_server:call({server, ServerNode}, Request),
+                    FilteredClientList = lists:filter(fun({client, _, _, _, Status}) ->
+                        Status == true end, ClientList),
+                    FormattedAdminClientList = lists:map(fun({client, _, Name, _, _}) ->
+                        Name
+                        end, FilteredClientList),
+                    print_list(FormattedAdminClientList);
                 _ ->
                     io:format("Undefined internal message received~n")
             end
@@ -320,4 +303,3 @@ show_clients() ->
 
 
 %-------------helper functions-----------------
-
